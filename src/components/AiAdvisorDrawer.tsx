@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Loader2, PanelRightClose, Send, Sparkles } from 'lucide-react';
+import { formatCentsBRL } from '../lib/format';
 import { ChatMessage } from '../types/finance';
 
 interface AiAdvisorDrawerProps {
@@ -51,7 +52,7 @@ export function AiAdvisorDrawer({
               Consultor FinAI
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Análise contextual em BRL
+              Consultas em dados reais (BRL)
             </p>
           </div>
         </div>
@@ -68,15 +69,15 @@ export function AiAdvisorDrawer({
 
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5">
         {messages.length === 0 && !isLoading && (
-          <div className="h-full flex flex-col items-center justify-center text-center px-4 py-10 space-y-2">
+          <div className="h-full flex flex-col items-center justify-center text-center px-4 py-10 space-y-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <Sparkles className="w-5 h-5" />
             </div>
             <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
               Nenhuma conversa ainda
             </p>
-            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-[240px]">
-              Faça uma pergunta sobre seus gastos, categorias ou orçamentos quando houver lançamentos registrados.
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-[250px]">
+              Pergunte sobre o total do mês, gastos por categoria, maiores despesas ou comparativos mensais.
             </p>
           </div>
         )}
@@ -125,9 +126,11 @@ export function AiAdvisorDrawer({
                         key={idx}
                         className="flex items-center justify-between gap-2 py-1.5 first:pt-0 last:pb-0 text-xs"
                       >
-                        <span className="text-slate-600 dark:text-slate-400">{item.label}</span>
+                        <span className="text-slate-600 dark:text-slate-400 truncate">
+                          {item.label}
+                        </span>
                         <span
-                          className={`font-mono-num font-semibold ${
+                          className={`font-mono-num font-semibold shrink-0 ${
                             item.tone === 'positive'
                               ? 'text-emerald-700 dark:text-emerald-400'
                               : item.tone === 'warning'
@@ -142,6 +145,69 @@ export function AiAdvisorDrawer({
                   </div>
                 </div>
               )}
+
+              {msg.miniChart && msg.miniChart.length > 0 && (
+                <div className="ml-8 rounded-xl bg-slate-50 dark:bg-[#0B0F17]/75 border border-slate-200 dark:border-white/[0.08] p-3.5 space-y-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Distribuição visual
+                  </p>
+                  {(() => {
+                    const maxVal = Math.max(
+                      ...msg.miniChart.map((p) => p.value_cents),
+                      1
+                    );
+                    return (
+                      <div className="space-y-2">
+                        {msg.miniChart.map((point, idx) => {
+                          const widthPct =
+                            point.value_cents > 0
+                              ? Math.max((point.value_cents / maxVal) * 100, 4)
+                              : 0;
+                          return (
+                            <div key={`${point.label}-${idx}`} className="space-y-1">
+                              <div className="flex items-center justify-between gap-2 text-[11px]">
+                                <span className="text-slate-700 dark:text-slate-300 truncate">
+                                  {point.label}
+                                </span>
+                                <span className="font-mono-num font-medium text-slate-900 dark:text-slate-100 shrink-0">
+                                  {formatCentsBRL(point.value_cents)}
+                                </span>
+                              </div>
+                              <div className="h-1.5 w-full rounded-full bg-slate-200 dark:bg-white/[0.08] overflow-hidden">
+                                <div
+                                  className="h-full rounded-full bg-[#0D9488] dark:bg-emerald-500 transition-all duration-300"
+                                  style={{ width: `${widthPct}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {msg.suggestions && msg.suggestions.length > 0 && (
+                <div className="ml-8 space-y-1.5">
+                  <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                    Sugestões de consulta:
+                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    {msg.suggestions.map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        disabled={isLoading}
+                        onClick={() => void onSendMessage(suggestion)}
+                        className="text-left px-3 py-2 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0B0F17]/60 hover:border-[#0D9488] dark:hover:border-emerald-500/50 text-xs text-slate-700 dark:text-slate-200 transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )
         )}
@@ -149,7 +215,7 @@ export function AiAdvisorDrawer({
         {isLoading && (
           <div className="flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400">
             <Loader2 className="w-4 h-4 animate-spin text-emerald-600 dark:text-emerald-400" />
-            <span>Analisando seus dados financeiros...</span>
+            <span>Consultando seus dados reais...</span>
           </div>
         )}
 

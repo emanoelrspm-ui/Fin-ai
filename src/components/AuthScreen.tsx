@@ -8,6 +8,7 @@ import {
   Loader2,
   Lock,
   Mail,
+  Monitor,
   Moon,
   Sun,
   User,
@@ -251,13 +252,18 @@ export function AuthScreen({ theme, onToggleTheme }: AuthScreenProps) {
         >
           {theme === 'dark' ? (
             <>
-              <Sun className="w-3.5 h-3.5 text-emerald-400" />
-              <span>FinAI Claro</span>
+              <Moon className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Escuro</span>
+            </>
+          ) : theme === 'system' ? (
+            <>
+              <Monitor className="w-3.5 h-3.5 text-[#0D9488] dark:text-emerald-400" />
+              <span>Sistema</span>
             </>
           ) : (
             <>
-              <Moon className="w-3.5 h-3.5 text-[#0D9488]" />
-              <span>Obsidian Escuro</span>
+              <Sun className="w-3.5 h-3.5 text-[#0D9488]" />
+              <span>Claro</span>
             </>
           )}
         </button>

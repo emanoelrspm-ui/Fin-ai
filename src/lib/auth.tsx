@@ -18,10 +18,15 @@ interface AuthContextValue {
   isConfigured: boolean;
   isRecoveryMode: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, name: string) => Promise<{ needsEmailConfirmation: boolean }>;
+  signUp: (
+    email: string,
+    password: string,
+    name: string
+  ) => Promise<{ needsEmailConfirmation: boolean }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
+  updateProfileName: (name: string) => Promise<void>;
   clearRecoveryMode: () => void;
 }
 
@@ -36,7 +41,10 @@ export function mapSupabaseAuthError(err: unknown): string {
       : 'Erro de autenticação.';
   const lower = raw.toLowerCase();
 
-  if (lower.includes('invalid login credentials') || lower.includes('invalid_credentials')) {
+  if (
+    lower.includes('invalid login credentials') ||
+    lower.includes('invalid_credentials')
+  ) {
     return 'E-mail ou senha inválidos.';
   }
   if (lower.includes('email not confirmed')) {
@@ -57,13 +65,22 @@ export function mapSupabaseAuthError(err: unknown): string {
   ) {
     return 'Muitas tentativas em sequência. Aguarde alguns instantes e tente novamente.';
   }
-  if (lower.includes('password should be at least') || lower.includes('weak_password')) {
+  if (
+    lower.includes('password should be at least') ||
+    lower.includes('weak_password')
+  ) {
     return 'A senha deve conter no mínimo 8 caracteres.';
   }
-  if (lower.includes('different from the old password') || lower.includes('same password')) {
+  if (
+    lower.includes('different from the old password') ||
+    lower.includes('same password')
+  ) {
     return 'A nova senha deve ser diferente da senha anterior.';
   }
-  if (lower.includes('invalid email') || lower.includes('unable to validate email')) {
+  if (
+    lower.includes('invalid email') ||
+    lower.includes('unable to validate email')
+  ) {
     return 'Informe um endereço de e-mail válido.';
   }
   if (lower.includes('network') || lower.includes('failed to fetch')) {
@@ -84,7 +101,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(isSupabaseConfigured);
-  const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(hasRecoveryHashInUrl);
+  const [isRecoveryMode, setIsRecoveryMode] = useState<boolean>(
+    hasRecoveryHashInUrl
+  );
 
   const clearLocalSessionState = useCallback(() => {
     setSession(null);
@@ -160,28 +179,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string, name: string) => {
-    if (!supabase) {
-      throw new Error('Autenticação Supabase não configurada neste ambiente.');
-    }
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        data: {
-          full_name: name.trim(),
-          name: name.trim(),
+  const signUp = useCallback(
+    async (email: string, password: string, name: string) => {
+      if (!supabase) {
+        throw new Error('Autenticação Supabase não configurada neste ambiente.');
+      }
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            full_name: name.trim(),
+            name: name.trim(),
+          },
+          emailRedirectTo: window.location.origin,
         },
-        emailRedirectTo: window.location.origin,
-      },
-    });
-    if (error) {
-      throw new Error(mapSupabaseAuthError(error));
-    }
-    return {
-      needsEmailConfirmation: !data.session,
-    };
-  }, []);
+      });
+      if (error) {
+        throw new Error(mapSupabaseAuthError(error));
+      }
+      return {
+        needsEmailConfirmation: !data.session,
+      };
+    },
+    []
+  );
 
   const resetPassword = useCallback(async (email: string) => {
     if (!supabase) {
@@ -191,10 +213,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       redirectTo: window.location.origin,
     });
     if (error) {
-      // Rate limit or network errors should still inform the user,
-      // while avoiding any user-enumeration confirmation.
       const lower = error.message.toLowerCase();
-      if (lower.includes('rate limit') || lower.includes('429') || lower.includes('only request')) {
+      if (
+        lower.includes('rate limit') ||
+        lower.includes('429') ||
+        lower.includes('only request')
+      ) {
         throw new Error(mapSupabaseAuthError(error));
       }
     }
@@ -211,8 +235,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(mapSupabaseAuthError(error));
     }
     setIsRecoveryMode(false);
-    if (typeof window !== 'undefined' && window.location.hash.includes('type=recovery')) {
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    if (
+      typeof window !== 'undefined' &&
+      window.location.hash.includes('type=recovery')
+    ) {
+      window.history.replaceState(
+        null,
+        '',
+        window.location.pathname + window.location.search
+      );
+    }
+  }, []);
+
+  const updateProfileName = useCallback(async (name: string) => {
+    if (!supabase) {
+      throw new Error('Autenticação Supabase não configurada neste ambiente.');
+    }
+    const trimmed = name.trim();
+    const { data, error } = await supabase.auth.updateUser({
+      data: {
+        full_name: trimmed,
+        name: trimmed,
+      },
+    });
+    if (error) {
+      throw new Error(mapSupabaseAuthError(error));
+    }
+    if (data.user) {
+      setUser(data.user);
     }
   }, []);
 
@@ -232,6 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       resetPassword,
       updatePassword,
+      updateProfileName,
       clearRecoveryMode,
     }),
     [
@@ -244,6 +295,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       resetPassword,
       updatePassword,
+      updateProfileName,
       clearRecoveryMode,
     ]
   );
