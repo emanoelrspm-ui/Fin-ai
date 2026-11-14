@@ -1,5 +1,4 @@
 import {
-  ArrowUpRight,
   Car,
   Film,
   GraduationCap,
@@ -7,7 +6,7 @@ import {
   Utensils,
 } from 'lucide-react';
 import { Category } from '../types/finance';
-import { CATEGORY_META } from '../utils/format';
+import { CATEGORY_META } from '../lib/format';
 
 interface CategoryIconProps {
   category: Category;
@@ -29,8 +28,6 @@ export function CategoryIcon({ category, size = 'md' }: CategoryIconProps) {
         return <GraduationCap className={iconSize} strokeWidth={1.9} />;
       case 'Lazer':
         return <Film className={iconSize} strokeWidth={1.9} />;
-      case 'Receita':
-        return <ArrowUpRight className={iconSize} strokeWidth={2} />;
       case 'Outros':
       default:
         return <Receipt className={iconSize} strokeWidth={1.9} />;

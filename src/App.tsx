@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
   LayoutDashboard,
   ListOrdered,
+  LogOut,
   Moon,
   PanelRightOpen,
   Plus,
@@ -10,24 +11,15 @@ import {
   Sun,
   Target,
 } from 'lucide-react';
+import { api, apiFetch, MeResponse } from './lib/api';
+import { AuthProvider, useAuth } from './lib/auth';
 import {
-  HISTORICAL_CASHFLOW,
-  INITIAL_BUDGETS,
-  INITIAL_CHAT_MESSAGES,
-  INITIAL_GOALS,
-  INITIAL_TRANSACTIONS,
-} from './data/initialData';
-import {
-  CashflowMonth,
-  CategoryBudget,
   ChatMessage,
-  ExpenseCategory,
   NavSection,
-  SavingsGoal,
   ThemeMode,
   Transaction,
 } from './types/finance';
-import { formatBRL } from './utils/format';
+import { AuthScreen } from './components/AuthScreen';
 import { OverviewView } from './components/OverviewView';
 import { LedgerView } from './components/LedgerView';
 import { IntelligenceView } from './components/IntelligenceView';
@@ -47,42 +39,31 @@ const NAV_ITEMS: Array<{
   { id: 'budgets', label: 'Orçamentos', mobileLabel: 'Metas', icon: Target },
 ];
 
-export default function App() {
+function getInitials(name: string, email: string): string {
+  const source = name.trim() || email.trim();
+  if (!source) return 'U';
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  }
+  return source.slice(0, 2).toUpperCase();
+}
+
+function FinAIWorkspace() {
+  const { user, session, loading: authLoading, isRecoveryMode, signOut } = useAuth();
+
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem('finai-theme');
     return saved === 'dark' ? 'dark' : 'light';
   });
 
   const [activeSection, setActiveSection] = useState<NavSection>('overview');
+  const [me, setMe] = useState<MeResponse | null>(null);
+  const [meLoading, setMeLoading] = useState(false);
+  const [meError, setMeError] = useState<string | null>(null);
 
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    try {
-      const saved = localStorage.getItem('finai-transactions');
-      return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
-    } catch {
-      return INITIAL_TRANSACTIONS;
-    }
-  });
-
-  const [budgets, setBudgets] = useState<CategoryBudget[]>(() => {
-    try {
-      const saved = localStorage.getItem('finai-budgets');
-      return saved ? JSON.parse(saved) : INITIAL_BUDGETS;
-    } catch {
-      return INITIAL_BUDGETS;
-    }
-  });
-
-  const [goals, setGoals] = useState<SavingsGoal[]>(() => {
-    try {
-      const saved = localStorage.getItem('finai-goals');
-      return saved ? JSON.parse(saved) : INITIAL_GOALS;
-    } catch {
-      return INITIAL_GOALS;
-    }
-  });
-
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT_MESSAGES);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isAiChatLoading, setIsAiChatLoading] = useState(false);
   const [aiChatError, setAiChatError] = useState<string | null>(null);
   const [isAdvisorOpen, setIsAdvisorOpen] = useState<boolean>(() =>
@@ -90,7 +71,6 @@ export default function App() {
   );
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -102,76 +82,54 @@ export default function App() {
     localStorage.setItem('finai-theme', theme);
   }, [theme]);
 
-  useEffect(() => {
-    localStorage.setItem('finai-transactions', JSON.stringify(transactions));
-  }, [transactions]);
-
-  useEffect(() => {
-    localStorage.setItem('finai-budgets', JSON.stringify(budgets));
-  }, [budgets]);
-
-  useEffect(() => {
-    localStorage.setItem('finai-goals', JSON.stringify(goals));
-  }, [goals]);
-
-  const cashflowSeries: CashflowMonth[] = useMemo(() => {
-    const novIncome = transactions
-      .filter((t) => t.amount > 0)
-      .reduce((sum, t) => sum + t.amount, 0);
-    const novExpense = transactions
-      .filter((t) => t.amount < 0)
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-
-    return [
-      ...HISTORICAL_CASHFLOW,
-      {
-        month: 'Nov',
-        income: Math.round(novIncome),
-        expenses: Math.round(novExpense),
-        invested: Math.max(0, Math.round(novIncome - novExpense)),
-      },
-    ];
-  }, [transactions]);
-
-  const handleSaveTransaction = (
-    txData: Omit<Transaction, 'id'>,
-    existingId?: string
-  ) => {
-    if (existingId) {
-      setTransactions((prev) =>
-        prev.map((item) => (item.id === existingId ? { ...txData, id: existingId } : item))
+  const loadMe = useCallback(async () => {
+    if (!session) return;
+    setMeLoading(true);
+    setMeError(null);
+    try {
+      const profile = await api.getMe();
+      setMe(profile);
+    } catch (err) {
+      setMeError(
+        err instanceof Error ? err.message : 'Erro ao carregar perfil em /api/me.'
       );
-    } else {
-      const newTx: Transaction = {
-        ...txData,
-        id: `tx-${Date.now()}`,
-      };
-      setTransactions((prev) => [newTx, ...prev]);
+    } finally {
+      setMeLoading(false);
     }
+  }, [session]);
+
+  useEffect(() => {
+    if (session && !isRecoveryMode) {
+      void loadMe();
+    } else {
+      setMe(null);
+      setTransactions([]);
+      setChatMessages([]);
+      setMeError(null);
+      setAiChatError(null);
+    }
+  }, [session, isRecoveryMode, loadMe]);
+
+  const handleSignOut = async () => {
+    setMe(null);
+    setTransactions([]);
+    setChatMessages([]);
+    setMeError(null);
+    setAiChatError(null);
+    await signOut();
   };
 
-  const handleDeleteTransaction = (id: string) => {
-    setTransactions((prev) => prev.filter((item) => item.id !== id));
-  };
-
-  const handleUpdateBudget = (category: ExpenseCategory, newLimit: number) => {
-    setBudgets((prev) =>
-      prev.map((b) => (b.category === category ? { ...b, limit: newLimit } : b))
-    );
-  };
-
-  const handleContributeGoal = (goalId: string, amount: number) => {
-    setGoals((prev) =>
-      prev.map((g) =>
-        g.id === goalId
-          ? { ...g, currentAmount: Math.min(g.targetAmount, g.currentAmount + amount) }
-          : g
-      )
-    );
+  const handleSaveTransaction = async (txData: Omit<Transaction, 'id'>) => {
+    const created = await apiFetch<Transaction>('/api/expenses', {
+      method: 'POST',
+      body: JSON.stringify(txData),
+    });
+    setTransactions((prev) => [created, ...prev]);
   };
 
   const handleSendChatMessage = async (text: string) => {
     const nowTime = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
       hour: '2-digit',
       minute: '2-digit',
     }).format(new Date());
@@ -188,78 +146,67 @@ export default function App() {
     setAiChatError(null);
     if (!isAdvisorOpen) setIsAdvisorOpen(true);
 
-    const totalIncome = transactions
-      .filter((t) => t.amount > 0)
-      .reduce((s, t) => s + t.amount, 0);
-    const totalExpense = transactions
-      .filter((t) => t.amount < 0)
-      .reduce((s, t) => s + Math.abs(t.amount), 0);
-
-    const byCategory = budgets.map((b) => {
-      const spent = transactions
-        .filter((t) => t.amount < 0 && t.category === b.category)
-        .reduce((s, t) => s + Math.abs(t.amount), 0);
-      return {
-        categoria: b.category,
-        gastoAtual: formatBRL(spent),
-        tetoMensal: formatBRL(b.limit),
-      };
-    });
-
     try {
-      const res = await fetch('/api/ai/chat', {
+      const data = await apiFetch<{
+        reply: string;
+        structuredCard?: ChatMessage['structuredCard'];
+      }>('/api/ai/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
           history: chatMessages.map((m) => ({ role: m.role, text: m.text })),
-          financialContext: {
-            receitasMes: formatBRL(totalIncome),
-            despesasMes: formatBRL(totalExpense),
-            saldoDisponivel: formatBRL(totalIncome - totalExpense),
-            categorias: byCategory,
-            ultimosLancamentos: transactions.slice(0, 6).map((t) => ({
-              titulo: t.title,
-              valor: formatBRL(t.amount, { showPlus: true }),
-              categoria: t.category,
-              data: t.date,
-            })),
-            metas: goals.map((g) => ({
-              nome: g.name,
-              atual: formatBRL(g.currentAmount),
-              alvo: formatBRL(g.targetAmount),
-            })),
-          },
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Erro ao consultar assistente.');
-      }
-
       const replyTime = new Intl.DateTimeFormat('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
         hour: '2-digit',
         minute: '2-digit',
       }).format(new Date());
 
-      const assistantMsg: ChatMessage = {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        text: data.reply,
-        timestamp: replyTime,
-        structuredCard: data.structuredCard,
-      };
-
-      setChatMessages((prev) => [...prev, assistantMsg]);
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `ai-${Date.now()}`,
+          role: 'assistant',
+          text: data.reply,
+          timestamp: replyTime,
+          structuredCard: data.structuredCard,
+        },
+      ]);
     } catch (err) {
       setAiChatError(
-        err instanceof Error ? err.message : 'Não foi possível obter resposta do consultor.'
+        err instanceof Error ? err.message : 'Erro ao consultar assistente financeiro.'
       );
     } finally {
       setIsAiChatLoading(false);
     }
   };
+
+  const toggleTheme = () => setTheme((t) => (t === 'light' ? 'dark' : 'light'));
+
+  const displayEmail = me?.email || user?.email || '';
+  const displayName = me?.name || null;
+  const initials = useMemo(
+    () => getInitials(displayName || '', displayEmail),
+    [displayName, displayEmail]
+  );
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC] dark:bg-[#0B0F17] p-6">
+        <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-white/[0.08] p-6 space-y-4 animate-pulse">
+          <div className="h-6 w-28 rounded bg-slate-200 dark:bg-white/[0.08]" />
+          <div className="h-4 w-56 rounded bg-slate-100 dark:bg-white/[0.05]" />
+          <div className="h-10 w-full rounded-lg bg-slate-100 dark:bg-white/[0.05]" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!session || !user || isRecoveryMode) {
+    return <AuthScreen theme={theme} onToggleTheme={toggleTheme} />;
+  }
 
   const currentNavLabel =
     NAV_ITEMS.find((n) => n.id === activeSection)?.label || 'Visão Geral';
@@ -304,7 +251,7 @@ export default function App() {
         <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-white/[0.08]">
           <button
             type="button"
-            onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+            onClick={toggleTheme}
             className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-slate-200 dark:border-white/[0.08] bg-slate-50/70 dark:bg-white/[0.03] text-xs font-medium text-slate-700 dark:text-slate-300 hover:border-teal-600/40 dark:hover:border-emerald-500/40 transition-colors cursor-pointer"
           >
             <span className="flex items-center gap-2 whitespace-nowrap">
@@ -318,18 +265,31 @@ export default function App() {
             <span className="text-[11px] text-slate-400 dark:text-slate-500">Alternar</span>
           </button>
 
-          <div className="flex items-center gap-3 px-2">
-            <div className="w-9 h-9 rounded-lg bg-slate-900 dark:bg-emerald-500/20 text-white dark:text-emerald-300 flex items-center justify-center text-xs font-semibold shrink-0">
-              ER
+          <div className="flex items-center justify-between gap-2 px-1">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-lg bg-slate-900 dark:bg-emerald-500/20 text-white dark:text-emerald-300 flex items-center justify-center text-xs font-semibold shrink-0">
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+                  {displayName || 'Conta FinAI'}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                  {displayEmail}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
-                Emanoel Ribeiro
-              </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                Conta BRL · Pessoal
-              </p>
-            </div>
+
+            <button
+              type="button"
+              onClick={handleSignOut}
+              title="Sair"
+              aria-label="Sair da conta"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 shrink-0 transition-colors cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sair</span>
+            </button>
           </div>
         </div>
       </aside>
@@ -357,7 +317,7 @@ export default function App() {
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+              onClick={toggleTheme}
               aria-label="Alternar tema claro e escuro"
               className="lg:hidden w-9 h-9 rounded-lg border border-slate-200 dark:border-white/[0.1] bg-white dark:bg-[#111827] flex items-center justify-center text-slate-700 dark:text-slate-200 cursor-pointer"
             >
@@ -366,14 +326,21 @@ export default function App() {
 
             <button
               type="button"
-              onClick={() => {
-                setEditingTx(null);
-                setIsModalOpen(true);
-              }}
+              onClick={handleSignOut}
+              aria-label="Sair da conta"
+              className="lg:hidden inline-flex items-center gap-1 px-2.5 h-9 rounded-lg border border-slate-200 dark:border-white/[0.1] bg-white dark:bg-[#111827] text-xs font-medium text-slate-700 dark:text-slate-200 cursor-pointer"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sair</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0D9488] hover:bg-[#047857] dark:bg-emerald-500 dark:hover:bg-teal-400 text-white dark:text-[#0B0F17] text-xs font-semibold whitespace-nowrap shrink-0 active:scale-[0.98] transition-all cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Novo lançamento</span>
+              <span>Nova despesa</span>
             </button>
 
             {!isAdvisorOpen && (
@@ -393,53 +360,31 @@ export default function App() {
         <main className="flex-1 px-4 sm:px-8 py-6 pb-24 lg:pb-8 max-w-[1200px] w-full mx-auto">
           {activeSection === 'overview' && (
             <OverviewView
+              userName={displayName}
+              userEmail={displayEmail}
+              meLoading={meLoading}
+              meError={meError}
+              onRetryMe={loadMe}
               transactions={transactions}
-              cashflow={cashflowSeries}
-              onAddTransaction={(tx) => handleSaveTransaction(tx)}
-              onEditTransaction={(tx) => {
-                setEditingTx(tx);
-                setIsModalOpen(true);
-              }}
-              onDeleteTransaction={handleDeleteTransaction}
+              cashflow={[]}
               onNavigateToLedger={() => setActiveSection('ledger')}
-              onOpenNewModal={() => {
-                setEditingTx(null);
-                setIsModalOpen(true);
-              }}
+              onOpenNewModal={() => setIsModalOpen(true)}
             />
           )}
 
           {activeSection === 'ledger' && (
             <LedgerView
               transactions={transactions}
-              onEditTransaction={(tx) => {
-                setEditingTx(tx);
-                setIsModalOpen(true);
-              }}
-              onDeleteTransaction={handleDeleteTransaction}
-              onOpenNewModal={() => {
-                setEditingTx(null);
-                setIsModalOpen(true);
-              }}
+              onOpenNewModal={() => setIsModalOpen(true)}
             />
           )}
 
           {activeSection === 'intelligence' && (
-            <IntelligenceView
-              transactions={transactions}
-              goals={goals}
-              onAskAiScenario={(prompt) => handleSendChatMessage(prompt)}
-            />
+            <IntelligenceView onOpenNewModal={() => setIsModalOpen(true)} />
           )}
 
           {activeSection === 'budgets' && (
-            <BudgetsView
-              transactions={transactions}
-              budgets={budgets}
-              goals={goals}
-              onUpdateBudget={handleUpdateBudget}
-              onContributeGoal={handleContributeGoal}
-            />
+            <BudgetsView onOpenNewModal={() => setIsModalOpen(true)} />
           )}
         </main>
       </div>
@@ -480,16 +425,19 @@ export default function App() {
         })}
       </nav>
 
-      {/* Manual Transaction Modal */}
       <TransactionModal
         isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setEditingTx(null);
-        }}
+        onClose={() => setIsModalOpen(false)}
         onSave={handleSaveTransaction}
-        editingTransaction={editingTx}
       />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <FinAIWorkspace />
+    </AuthProvider>
   );
 }

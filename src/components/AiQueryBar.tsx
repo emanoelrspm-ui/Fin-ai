@@ -1,25 +1,17 @@
 import { FormEvent, useState } from 'react';
-import { Loader2, SendHorizontal, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
+import { AlertCircle, Loader2, SendHorizontal, Sparkles } from 'lucide-react';
+import { apiFetch } from '../lib/api';
+import { todaySaoPauloISO } from '../lib/format';
 import { Transaction } from '../types/finance';
-import { formatBRL } from '../utils/format';
 
 interface AiQueryBarProps {
-  onAddTransaction: (tx: Omit<Transaction, 'id'>) => void;
+  onExpenseCreated?: (tx: Transaction) => void;
 }
 
-const QUICK_EXAMPLES = [
-  'Almoço no boteco R$ 45 no débito',
-  'Uber para reunião R$ 32,90 no crédito',
-  'Freela design interface +R$ 1.250 no Pix',
-];
-
-export function AiQueryBar({ onAddTransaction }: AiQueryBarProps) {
+export function AiQueryBar({ onExpenseCreated }: AiQueryBarProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [feedback, setFeedback] = useState<{
-    type: 'success' | 'error';
-    message: string;
-  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -27,42 +19,26 @@ export function AiQueryBar({ onAddTransaction }: AiQueryBarProps) {
     if (!trimmed || isLoading) return;
 
     setIsLoading(true);
-    setFeedback(null);
+    setError(null);
 
     try {
-      const res = await fetch('/api/ai/parse-expense', {
+      const data = await apiFetch<{ expense?: Transaction }>('/api/ai/parse-expense', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: trimmed,
-          today: '2026-11-14',
+          today: todaySaoPauloISO(),
         }),
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Não foi possível interpretar o lançamento.');
+      if (data.expense && onExpenseCreated) {
+        onExpenseCreated(data.expense);
       }
-
-      onAddTransaction({
-        title: data.title,
-        amount: Number(data.amount),
-        category: data.category,
-        paymentMethod: data.paymentMethod,
-        date: data.date || '2026-11-14',
-        source: 'ai',
-      });
-
       setInput('');
-      setFeedback({
-        type: 'success',
-        message: `${data.assistantNote} (${data.category} · ${formatBRL(Number(data.amount), { showPlus: true })})`,
-      });
     } catch (err) {
-      setFeedback({
-        type: 'error',
-        message: err instanceof Error ? err.message : 'Erro ao processar lançamento com IA.',
-      });
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível processar o lançamento com IA.'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -87,8 +63,8 @@ export function AiQueryBar({ onAddTransaction }: AiQueryBarProps) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={isLoading}
-          placeholder="Ex: Almoço no boteco R$ 45 no débito..."
-          aria-label="Descreva um gasto ou receita em linguagem natural"
+          placeholder="Descreva uma despesa (ex: almoço R$ 45,00 no débito)..."
+          aria-label="Descreva uma despesa em linguagem natural"
           className="w-full bg-transparent text-sm sm:text-[15px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none min-h-[36px]"
         />
 
@@ -102,42 +78,15 @@ export function AiQueryBar({ onAddTransaction }: AiQueryBarProps) {
         </button>
       </form>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-          <span className="font-medium text-slate-600 dark:text-slate-300">Sugestões rápidas:</span>
-          {QUICK_EXAMPLES.map((example, idx) => (
-            <button
-              key={example}
-              type="button"
-              onClick={() => setInput(example)}
-              className="text-left hover:text-teal-700 dark:hover:text-emerald-400 underline decoration-slate-300 dark:decoration-slate-700 underline-offset-2 transition-colors cursor-pointer"
-            >
-              {example}
-              {idx < QUICK_EXAMPLES.length - 1 && (
-                <span className="ml-2 text-slate-300 dark:text-slate-700 no-underline" aria-hidden="true">
-                  ·
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {feedback && (
+      {error && (
         <div
-          role="status"
-          className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border ${
-            feedback.type === 'success'
-              ? 'bg-emerald-50/80 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/25 text-emerald-800 dark:text-emerald-300'
-              : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/25 text-red-700 dark:text-red-300'
-          }`}
+          role="alert"
+          className="flex items-center justify-between gap-2 text-xs px-3 py-2 rounded-lg border bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/25 text-red-700 dark:text-red-300"
         >
-          {feedback.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-          ) : (
+          <span className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
-          )}
-          <span>{feedback.message}</span>
+            {error}
+          </span>
         </div>
       )}
     </section>

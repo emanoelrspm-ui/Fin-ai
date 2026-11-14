@@ -11,12 +11,6 @@ interface AiAdvisorDrawerProps {
   onClose: () => void;
 }
 
-const PROMPT_SUGGESTIONS = [
-  'Onde gastei mais este mês?',
-  'Como reduzir despesas em Alimentação?',
-  'Projete minha reserva em 6 meses',
-];
-
 export function AiAdvisorDrawer({
   messages,
   onSendMessage,
@@ -73,6 +67,20 @@ export function AiAdvisorDrawer({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-5">
+        {messages.length === 0 && !isLoading && (
+          <div className="h-full flex flex-col items-center justify-center text-center px-4 py-10 space-y-2">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+              Nenhuma conversa ainda
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-[240px]">
+              Faça uma pergunta sobre seus gastos, categorias ou orçamentos quando houver lançamentos registrados.
+            </p>
+          </div>
+        )}
+
         {messages.map((msg) =>
           msg.role === 'user' ? (
             <div key={msg.id} className="flex flex-col items-end gap-1">
@@ -141,7 +149,7 @@ export function AiAdvisorDrawer({
         {isLoading && (
           <div className="flex items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400">
             <Loader2 className="w-4 h-4 animate-spin text-emerald-600 dark:text-emerald-400" />
-            <span>Calculando cenários com base nos seus lançamentos...</span>
+            <span>Analisando seus dados financeiros...</span>
           </div>
         )}
 
@@ -154,21 +162,7 @@ export function AiAdvisorDrawer({
         <div ref={endRef} />
       </div>
 
-      <div className="p-4 border-t border-slate-200 dark:border-white/[0.08] space-y-3 bg-slate-50/70 dark:bg-[#0B0F17]/50">
-        <div className="flex flex-wrap gap-1.5">
-          {PROMPT_SUGGESTIONS.map((q) => (
-            <button
-              key={q}
-              type="button"
-              onClick={() => onSendMessage(q)}
-              disabled={isLoading}
-              className="text-left text-[11px] font-medium px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#1E293B]/70 border border-slate-200 dark:border-white/[0.08] text-slate-600 dark:text-slate-300 hover:border-teal-600 dark:hover:border-emerald-500/40 hover:text-teal-700 dark:hover:text-emerald-300 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              {q}
-            </button>
-          ))}
-        </div>
-
+      <div className="p-4 border-t border-slate-200 dark:border-white/[0.08] bg-slate-50/70 dark:bg-[#0B0F17]/50">
         <form
           onSubmit={handleSubmit}
           className="flex items-center gap-2 rounded-xl bg-white dark:bg-[#1E293B]/80 border border-slate-200 dark:border-white/[0.1] px-3 py-2 focus-within:border-[#0D9488] dark:focus-within:border-emerald-500 transition-colors"
@@ -178,7 +172,7 @@ export function AiAdvisorDrawer({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             disabled={isLoading}
-            placeholder="Pergunte sobre gastos ou projeções..."
+            placeholder="Pergunte sobre suas despesas..."
             aria-label="Mensagem para o consultor financeiro"
             className="w-full bg-transparent text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
           />
