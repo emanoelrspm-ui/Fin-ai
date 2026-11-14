@@ -1,0 +1,6 @@
+{
+  "name": "FinAI — Inteligência Financeira",
+  "description": "Plataforma de gestão financeira conversacional e inteligência patrimonial em BRL (R$) com assistente de IA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
